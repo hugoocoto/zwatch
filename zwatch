@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# Usage: zwatch <file.typ>
+#
+# Watches a Typst file for changes, recompiling it to WATCH_FILENAME and opens
+# it in zathura (which auto-reloads on change). Returns immediately; once
+# zathura is closed, the watcher is killed and WATCH_FILENAME is removed in the
+# background.
+
+usage() {
+    echo "Usage: zwatch <file.typ>"
+    echo ""
+    echo "Watches a Typst file for changes, recompiling it to "
+    echo "$WATCH_FILENAME and opens it in zathura (which auto-reloads "
+    echo "on change). Returns immediately; once zathura is closed, the"
+    echo "watcher is killed and $WATCH_FILENAME is removed in the "
+    echo "background. "
+}
+
+WATCH_FILENAME="/tmp/watch.pdf"
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    usage
+    exit 0
+fi
+
+if [ "$#" -ne 1 ]; then
+    echo "Error: expected 1 argument (a .typ file), got $#" >&2
+    usage >&2
+    exit 1
+fi
+
+if [ ! -f "$1" ]; then
+    echo "Error: file '$1' not found" >&2
+    exit 1
+fi
+
+for dep in typst zathura; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+        echo "Error: '$dep' not found in PATH" >&2
+        exit 1
+    fi
+done
+
+log_file="$(mktemp)"
+typst watch "$1" $WATCH_FILENAME >"$log_file" 2>&1 &
+watch_pid=$!
+disown "$watch_pid"
+
+# typst watch doesn't exit on a compile error -- it just keeps watching and
+# never produces WATCH_FILENAME -- so on top of checking the process is still
+# alive, give up after a timeout and surface its output instead of hanging.
+wait_iters=0
+max_wait_iters=150 # 150 * 0.1s = 15s
+until [ -f $WATCH_FILENAME ]; do
+    if ! kill -0 "$watch_pid" 2>/dev/null; then
+        echo "Error: typst watch exited before producing $WATCH_FILENAME" >&2
+        cat "$log_file" >&2
+        rm -f "$log_file"
+        exit 1
+    fi
+    wait_iters=$((wait_iters + 1))
+    if [ "$wait_iters" -ge "$max_wait_iters" ]; then
+        echo "Error: typst watch hasn't produced $WATCH_FILENAME after 15s -- likely a compile error in '$1':" >&2
+        cat "$log_file" >&2
+        kill "$watch_pid" 2>/dev/null
+        rm -f "$log_file"
+        exit 1
+    fi
+    sleep 0.1
+done
+rm -f "$log_file"
+
+(
+    zathura $WATCH_FILENAME
+    kill "$watch_pid" 2>/dev/null
+    rm -f $WATCH_FILENAME
+) &
+disown
