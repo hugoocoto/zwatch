@@ -18,3 +18,10 @@ You can use the Github installer from the ur:
 ur.Github { user = "hugoocoto", repo = "zwatch", cmd = ":" }
 ```
 
+## Download
+
+You can grab the file directly too:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/hugoocoto/zwatch/refs/heads/main/zwatch
+```
