@@ -15,6 +15,6 @@ zwatch <file.typ>
 You can use the Github installer from the ur:
 
 ```lua
-ur.Github { user = "hugoocoto", repo = "zwatch", cmd = "" }
+ur.Github { user = "hugoocoto", repo = "zwatch", cmd = ":" }
 ```
 
