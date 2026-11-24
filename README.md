@@ -1,8 +1,10 @@
 # zwatch
 
-Watches a Typst file for changes, recompiling it to WATCH_FILENAME and opens it
-in zathura (which auto-reloads on change). Returns immediately; once zathura is
-closed, the watcher is killed and WATCH_FILENAME is removed in the background.
+Watches a Typst file for changes, recompiling it to a PDF in a fresh per-run
+directory (`/tmp/zwatch.XXXXXX/<name>.pdf`) and opens it in zathura (which
+auto-reloads on change). Returns immediately; once zathura is closed, the
+watcher is killed and the directory is removed in the background. You can run
+several zwatch instances at the same time, even on the same file.
 
 ## Usage
 

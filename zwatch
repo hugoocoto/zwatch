@@ -2,22 +2,21 @@
 
 # Usage: zwatch <file.typ>
 #
-# Watches a Typst file for changes, recompiling it to WATCH_FILENAME and opens
-# it in zathura (which auto-reloads on change). Returns immediately; once
-# zathura is closed, the watcher is killed and WATCH_FILENAME is removed in the
-# background.
+# Watches a Typst file for changes, recompiling it to a PDF in a fresh
+# per-run directory (/tmp/zwatch.XXXXXX/<name>.pdf) and opens it in zathura
+# (which auto-reloads on change). Returns immediately; once zathura is closed,
+# the watcher is killed and the directory is removed in the background.
+# Several zwatch instances can run at the same time without interfering.
 
 usage() {
     echo "Usage: zwatch <file.typ>"
     echo ""
-    echo "Watches a Typst file for changes, recompiling it to "
-    echo "$WATCH_FILENAME and opens it in zathura (which auto-reloads "
-    echo "on change). Returns immediately; once zathura is closed, the"
-    echo "watcher is killed and $WATCH_FILENAME is removed in the "
-    echo "background. "
+    echo "Watches a Typst file for changes, recompiling it to a PDF in a"
+    echo "fresh per-run directory (/tmp/zwatch.XXXXXX/<name>.pdf) and opens"
+    echo "it in zathura (which auto-reloads on change). Returns immediately;"
+    echo "once zathura is closed, the watcher is killed and the directory is"
+    echo "removed in the background."
 }
-
-WATCH_FILENAME="/tmp/watch.pdf"
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     usage
@@ -42,8 +41,14 @@ for dep in typst zathura; do
     fi
 done
 
-log_file="$(mktemp)"
-typst watch "$1" $WATCH_FILENAME >"$log_file" 2>&1 &
+# Each run gets its own directory so concurrent instances never share (or
+# delete) each other's PDF. The PDF keeps the source's name so zathura's title
+# stays readable.
+watch_dir="$(mktemp -d /tmp/zwatch.XXXXXX)" || exit 1
+WATCH_FILENAME="$watch_dir/$(basename "$1" .typ).pdf"
+log_file="$watch_dir/typst.log"
+
+typst watch "$1" "$WATCH_FILENAME" >"$log_file" 2>&1 &
 watch_pid=$!
 disown "$watch_pid"
 
@@ -52,11 +57,11 @@ disown "$watch_pid"
 # alive, give up after a timeout and surface its output instead of hanging.
 wait_iters=0
 max_wait_iters=150 # 150 * 0.1s = 15s
-until [ -f $WATCH_FILENAME ]; do
+until [ -f "$WATCH_FILENAME" ]; do
     if ! kill -0 "$watch_pid" 2>/dev/null; then
         echo "Error: typst watch exited before producing $WATCH_FILENAME" >&2
         cat "$log_file" >&2
-        rm -f "$log_file"
+        rm -rf "$watch_dir"
         exit 1
     fi
     wait_iters=$((wait_iters + 1))
@@ -64,16 +69,15 @@ until [ -f $WATCH_FILENAME ]; do
         echo "Error: typst watch hasn't produced $WATCH_FILENAME after 15s -- likely a compile error in '$1':" >&2
         cat "$log_file" >&2
         kill "$watch_pid" 2>/dev/null
-        rm -f "$log_file"
+        rm -rf "$watch_dir"
         exit 1
     fi
     sleep 0.1
 done
-rm -f "$log_file"
 
 (
-    zathura $WATCH_FILENAME
+    zathura "$WATCH_FILENAME"
     kill "$watch_pid" 2>/dev/null
-    rm -f $WATCH_FILENAME
+    rm -rf "$watch_dir"
 ) &
 disown
